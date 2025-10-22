@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Weight Tracker</string>
+    <string name="dashboard_title">Progress</string>
+    <string name="log_title">Log</string>
+
+    <string name="action_refresh">Refresh</string>
+    <string name="action_add_weight">Add weight</string>
+    <string name="action_delete_entry">Delete entry</string>
+    <string name="action_grant_permission">Grant access</string>
+    <string name="action_install_health_connect">Install Health Connect</string>
+    <string name="action_save_weight">Save</string>
+    <string name="action_cancel">Cancel</string>
+
+    <string name="loading_weights">Loading measurements…</string>
+    <string name="dashboard_empty_state">No weight measurements yet. Add your first entry to begin tracking trends.</string>
+    <string name="dashboard_trend_title">Weight trend</string>
+    <string name="dashboard_latest_weight">Latest: %1$.1f %2$s</string>
+    <string name="dashboard_stats_title">Recent summary</string>
+    <string name="dashboard_last_logged">Logged on %1$s at %2$s</string>
+    <string name="dashboard_weight_up">Up %1$.1f %2$s since last entry</string>
+    <string name="dashboard_weight_down">Down %1$.1f %2$s since last entry</string>
+
+    <string name="log_empty_state">Weights you record will appear here. Grant access and add your first entry to get started.</string>
+    <string name="log_weight_value">%1$.1f %2$s</string>
+    <string name="add_weight_title">New weight</string>
+    <string name="add_weight_field_label">Weight</string>
+
+    <string name="health_connect_not_installed_title">Install Health Connect</string>
+    <string name="health_connect_not_installed_message">Health Connect is required to store weight securely. Install it from Google Play, then grant access.</string>
+    <string name="health_connect_not_supported">This device does not support Health Connect. Weight storage is unavailable.</string>
+    <string name="health_connect_permission_title">Allow Health Connect access</string>
+    <string name="health_connect_permission_message">To save and read your weight history, grant Weight Tracker access to Health Connect.</string>
+
+    <string name="unit_kilograms">kg</string>
+    <string name="unit_pounds">lb</string>
+    <string name="toast_requesting_permissions">Requesting Health Connect permissions…</string>
+    <string name="toast_open_health_connect">Opening Health Connect so you can review permissions.</string>
+</resources>
