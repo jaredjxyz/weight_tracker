@@ -27,7 +27,7 @@ data class WeightTrackerUiState(
     val permissionsGranted: Boolean = false,
     val entries: List<WeightEntry> = emptyList(),
     val trend: WeightTrend = WeightTrend(emptyList(), emptyList()),
-    val preferredUnit: WeightUnit = WeightUnit.Kilograms,
+    val preferredUnit: WeightUnit = WeightUnit.Pounds,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
     val lastSync: Instant? = null

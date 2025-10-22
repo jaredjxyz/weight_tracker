@@ -11,25 +11,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.Scaffold
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.weighttracker.R
 import com.example.weighttracker.domain.model.TrendPoint
-import com.example.weighttracker.domain.model.WeightEntry
 import com.example.weighttracker.domain.model.WeightUnit
 import com.example.weighttracker.ui.WeightTrackerUiState
 import com.example.weighttracker.ui.components.EmptyState
@@ -51,15 +44,7 @@ fun DashboardScreen(
         modifier = modifier,
         topBar = {
             LargeTopAppBar(
-                title = { Text(text = stringResource(id = R.string.dashboard_title)) },
-                actions = {
-                    IconButton(onClick = onRefresh, enabled = uiState.permissionsGranted) {
-                        Icon(
-                            imageVector = Icons.Outlined.Refresh,
-                            contentDescription = stringResource(id = R.string.action_refresh)
-                        )
-                    }
-                }
+                title = { Text(text = stringResource(id = R.string.dashboard_title)) }
             )
         }
     ) { innerPadding ->
@@ -133,16 +118,6 @@ private fun LoadedState(
     uiState: WeightTrackerUiState,
     modifier: Modifier
 ) {
-    val latest = uiState.entries.firstOrNull()
-    val previous = uiState.entries.drop(1).firstOrNull()
-    val change = remember(latest, previous) {
-        latest?.let { latestEntry ->
-            previous?.let { previousEntry ->
-                (latestEntry.weightKg - previousEntry.weightKg)
-            }
-        }
-    }
-
     LazyColumn(
         modifier = modifier.padding(horizontal = 16.dp),
         contentPadding = PaddingValues(bottom = 24.dp),
@@ -152,18 +127,8 @@ private fun LoadedState(
             TrendCard(
                 dailyPoints = uiState.trend.dailyPoints,
                 rollingPoints = uiState.trend.rollingAveragePoints,
-                latest = latest,
                 unit = uiState.preferredUnit
             )
-        }
-        if (latest != null) {
-            item {
-                StatsCard(
-                    latest = latest,
-                    change = change,
-                    unit = uiState.preferredUnit
-                )
-            }
         }
     }
 }
@@ -172,7 +137,6 @@ private fun LoadedState(
 private fun TrendCard(
     dailyPoints: List<TrendPoint>,
     rollingPoints: List<TrendPoint>,
-    latest: WeightEntry?,
     unit: WeightUnit
 ) {
     Card(
@@ -189,71 +153,11 @@ private fun TrendCard(
             TrendChart(
                 dailyPoints = dailyPoints,
                 rollingPoints = rollingPoints,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp)
+                unit = unit,
+                modifier = Modifier.fillMaxWidth()
             )
-            Spacer(modifier = Modifier.height(16.dp))
-            latest?.let {
-                Text(
-                    text = stringResource(
-                        id = R.string.dashboard_latest_weight,
-                        latest.rounded(unit),
-                        unitLabel(unit)
-                    ),
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
         }
     }
-}
-
-@Composable
-private fun StatsCard(
-    latest: WeightEntry,
-    change: Double?,
-    unit: WeightUnit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = stringResource(id = R.string.dashboard_stats_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            Text(
-                text = stringResource(
-                    id = R.string.dashboard_last_logged,
-                    latest.displayDate,
-                    latest.displayTime
-                ),
-                style = MaterialTheme.typography.bodyMedium
-            )
-
-            change?.let {
-                val trendText = stringResource(
-                    id = if (it > 0) R.string.dashboard_weight_up else R.string.dashboard_weight_down,
-                    kotlin.math.abs(it),
-                    unitLabel(unit)
-                )
-                Text(
-                    text = trendText,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        }
-    }
-}
-
-private fun WeightEntry.rounded(unit: WeightUnit): Double = when (unit) {
-    WeightUnit.Kilograms -> roundedKg()
-    WeightUnit.Pounds -> roundedLbs()
 }
 
 private fun unitLabel(unit: WeightUnit): String = unit.symbol
