@@ -88,6 +88,7 @@ fun TrendChart(
 
     var selectedPoint by remember { mutableStateOf<TrendPoint?>(null) }
     var tapPosition by remember { mutableStateOf<Offset?>(null) }
+    var chartWidth by remember { mutableStateOf(0f) }
 
     Column(modifier = modifier) {
         // Legend
@@ -161,7 +162,7 @@ fun TrendChart(
                         }
                 ) {
                     val chartHeight = size.height
-                    val chartWidth = size.width
+                    chartWidth = size.width
                     val stepX = chartWidth / (pointCount - 1)
 
                     fun TrendPoint.toOffset(listIndex: Int): Offset {
@@ -253,12 +254,29 @@ fun TrendChart(
                         WeightUnit.Pounds -> point.weightKg * 2.20462
                     }
 
+                    // Smart positioning: place popup above point, or below if near top
+                    val popupHeight = with(density) { 70.dp.toPx() } // Approximate popup height
+                    val popupWidth = with(density) { 140.dp.toPx() } // Approximate popup width
+
+                    val yOffset = if (position.y < popupHeight + 20) {
+                        // Point is near top, place below
+                        with(density) { (position.y + 20.dp.toPx()).roundToInt() }
+                    } else {
+                        // Place above the point
+                        with(density) { (position.y - popupHeight - 10.dp.toPx()).roundToInt() }
+                    }
+
+                    // Center horizontally on the point, but keep within chart bounds
+                    val xOffset = with(density) {
+                        val centered = position.x - (popupWidth / 2) + 40.dp.toPx()
+                        val minX = 40.dp.toPx()
+                        val maxX = chartWidth + 40.dp.toPx() - popupWidth
+                        centered.coerceIn(minX, maxX).roundToInt()
+                    }
+
                     Popup(
                         alignment = Alignment.TopStart,
-                        offset = IntOffset(
-                            x = with(density) { (position.x + 40.dp.toPx()).roundToInt() },
-                            y = with(density) { (position.y - 40.dp.toPx()).roundToInt() }
-                        )
+                        offset = IntOffset(x = xOffset, y = yOffset)
                     ) {
                         Card(
                             colors = CardDefaults.cardColors(
