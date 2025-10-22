@@ -14,7 +14,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -43,7 +43,7 @@ fun DashboardScreen(
     Scaffold(
         modifier = modifier,
         topBar = {
-            LargeTopAppBar(
+            TopAppBar(
                 title = { Text(text = stringResource(id = R.string.dashboard_title)) }
             )
         }

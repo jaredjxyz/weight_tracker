@@ -13,14 +13,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -64,16 +63,8 @@ fun LogScreen(
     Scaffold(
         modifier = modifier,
         topBar = {
-            LargeTopAppBar(
-                title = { Text(text = stringResource(id = R.string.log_title)) },
-                actions = {
-                    IconButton(onClick = onGrantPermissions, enabled = uiState.permissionsGranted.not()) {
-                        Icon(
-                            imageVector = Icons.Outlined.Refresh,
-                            contentDescription = stringResource(id = R.string.action_refresh)
-                        )
-                    }
-                }
+            TopAppBar(
+                title = { Text(text = stringResource(id = R.string.log_title)) }
             )
         },
         floatingActionButton = {

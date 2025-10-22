@@ -247,36 +247,52 @@ fun TrendChart(
 
             // Tooltip overlay
             selectedPoint?.let { point ->
-                tapPosition?.let { position ->
-                    val density = LocalDensity.current
-                    val weightValue = when (unit) {
-                        WeightUnit.Kilograms -> point.weightKg
-                        WeightUnit.Pounds -> point.weightKg * 2.20462
-                    }
+                val density = LocalDensity.current
+                val weightValue = when (unit) {
+                    WeightUnit.Kilograms -> point.weightKg
+                    WeightUnit.Pounds -> point.weightKg * 2.20462
+                }
 
-                    // Smart positioning: place popup above point, or below if near top
-                    val popupHeight = with(density) { 70.dp.toPx() } // Approximate popup height
-                    val popupWidth = with(density) { 140.dp.toPx() } // Approximate popup width
+                // Calculate the actual point position on screen
+                val index = dailyPoints.indexOf(point)
+                if (index >= 0 && chartWidth > 0) {
+                    val stepX = chartWidth / (pointCount - 1)
+                    val normalizedY = (point.weightKg - minY) / yRange
+                    val pointX = index * stepX
+                    val pointY = 200.dp * (1 - normalizedY.toFloat())
 
-                    val yOffset = if (position.y < popupHeight + 20) {
+                    // Popup dimensions
+                    val popupHeight = 70.dp
+                    val popupWidth = 140.dp
+
+                    // Smart Y positioning: above or below the point
+                    val yOffset = if (pointY < popupHeight + 20.dp) {
                         // Point is near top, place below
-                        with(density) { (position.y + 20.dp.toPx()).roundToInt() }
+                        pointY + 30.dp
                     } else {
                         // Place above the point
-                        with(density) { (position.y - popupHeight - 10.dp.toPx()).roundToInt() }
+                        pointY - popupHeight - 10.dp
                     }
 
-                    // Center horizontally on the point, but keep within chart bounds
+                    // Smart X positioning: centered on point but within bounds
                     val xOffset = with(density) {
-                        val centered = position.x - (popupWidth / 2) + 40.dp.toPx()
-                        val minX = 40.dp.toPx()
-                        val maxX = chartWidth + 40.dp.toPx() - popupWidth
-                        centered.coerceIn(minX, maxX).roundToInt()
+                        val yAxisWidth = 40.dp
+                        val canvasPadding = 4.dp
+                        val pointScreenX = yAxisWidth + canvasPadding + (pointX / density.density).dp
+                        val centered = pointScreenX - (popupWidth / 2)
+                        val minX = yAxisWidth + canvasPadding
+                        val maxX = yAxisWidth + canvasPadding + (chartWidth / density.density).dp - popupWidth
+                        centered.coerceIn(minX, maxX)
                     }
 
                     Popup(
                         alignment = Alignment.TopStart,
-                        offset = IntOffset(x = xOffset, y = yOffset)
+                        offset = with(density) {
+                            IntOffset(
+                                x = xOffset.toPx().roundToInt(),
+                                y = yOffset.toPx().roundToInt()
+                            )
+                        }
                     ) {
                         Card(
                             colors = CardDefaults.cardColors(
