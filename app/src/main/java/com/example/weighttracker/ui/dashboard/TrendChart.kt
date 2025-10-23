@@ -1,5 +1,10 @@
 package com.example.weighttracker.ui.dashboard
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector2D
+import androidx.compose.animation.core.TwoWayConverter
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -122,12 +127,39 @@ fun TrendChart(
         (visibleDaily + visibleRolling).distinctBy { it.date to it.weightKg }
     }
 
-    val minY = remember(visibleCombined) {
+    val targetMinY = remember(visibleCombined) {
         visibleCombined.minOfOrNull { it.weightKg } ?: 0.0
     }
-    val maxY = remember(visibleCombined) {
+    val targetMaxY = remember(visibleCombined) {
         visibleCombined.maxOfOrNull { it.weightKg } ?: 100.0
     }
+
+    // Animated y-axis range for smooth transitions
+    data class YAxisRange(val min: Double, val max: Double)
+
+    val yRangeConverter = remember {
+        TwoWayConverter<YAxisRange, AnimationVector2D>(
+            convertToVector = { AnimationVector2D(it.min.toFloat(), it.max.toFloat()) },
+            convertFromVector = { YAxisRange(it.v1.toDouble(), it.v2.toDouble()) }
+        )
+    }
+
+    val animatedYRange = remember {
+        Animatable(YAxisRange(targetMinY, targetMaxY), yRangeConverter)
+    }
+
+    LaunchedEffect(targetMinY, targetMaxY) {
+        animatedYRange.animateTo(
+            targetValue = YAxisRange(targetMinY, targetMaxY),
+            animationSpec = spring(
+                dampingRatio = 0.8f,
+                stiffness = 300f
+            )
+        )
+    }
+
+    val minY = animatedYRange.value.min
+    val maxY = animatedYRange.value.max
     val yRange = (maxY - minY).takeIf { it != 0.0 } ?: 1.0
 
     val minWeight = when (unit) {
