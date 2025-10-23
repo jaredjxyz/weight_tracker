@@ -2,6 +2,7 @@ package com.example.weighttracker.ui.dashboard
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -89,6 +91,7 @@ fun TrendChart(
     var selectedPoint by remember { mutableStateOf<TrendPoint?>(null) }
     var tapPosition by remember { mutableStateOf<Offset?>(null) }
     var chartWidth by remember { mutableStateOf(0f) }
+    var activeLineIsDaily by remember { mutableStateOf(true) }
 
     Column(modifier = modifier) {
         // Legend
@@ -102,11 +105,15 @@ fun TrendChart(
             LegendItem(
                 color = colorScheme.primary,
                 label = "Daily",
+                isActive = activeLineIsDaily,
+                onClick = { activeLineIsDaily = true },
                 modifier = Modifier.padding(end = 16.dp)
             )
             LegendItem(
                 color = colorScheme.tertiary,
-                label = "7-day avg"
+                label = "7-day avg",
+                isActive = !activeLineIsDaily,
+                onClick = { activeLineIsDaily = false }
             )
         }
 
@@ -132,27 +139,35 @@ fun TrendChart(
                         .weight(1f)
                         .height(200.dp)
                         .padding(horizontal = 4.dp)
-                        .pointerInput(Unit) {
+                        .pointerInput(activeLineIsDaily, dailyPoints, rollingPoints) {
                             detectTapGestures { offset ->
                                 val chartWidth = size.width.toFloat()
+                                val chartHeight = size.height
                                 val stepX = chartWidth / (pointCount - 1)
+                                val activePoints = if (activeLineIsDaily) dailyPoints else rollingPoints
 
-                                // Find closest point
+                                // Find closest point on active line
                                 var closestIndex = -1
                                 var closestDistance = Float.MAX_VALUE
 
-                                dailyPoints
-                                    .forEachIndexed { index, _ ->
-                                        val x = index * stepX
-                                        val distance = abs(offset.x - x)
-                                        if (distance < closestDistance && distance < 30.dp.toPx()) {
-                                            closestDistance = distance
-                                            closestIndex = index
-                                        }
-                                    }
+                                activePoints.forEachIndexed { index, point ->
+                                    val x = index * stepX
+                                    val normalizedY = (point.weightKg - minY) / yRange
+                                    val y = chartHeight - (normalizedY * chartHeight).toFloat()
 
-                                if (closestIndex >= 0 && closestIndex < dailyPoints.size) {
-                                    selectedPoint = dailyPoints[closestIndex]
+                                    // Calculate distance to this point
+                                    val dx = offset.x - x
+                                    val dy = offset.y - y
+                                    val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+
+                                    if (distance < closestDistance && distance < 40.dp.toPx()) {
+                                        closestDistance = distance
+                                        closestIndex = index
+                                    }
+                                }
+
+                                if (closestIndex >= 0 && closestIndex < activePoints.size) {
+                                    selectedPoint = activePoints[closestIndex]
                                     tapPosition = offset
                                 } else {
                                     selectedPoint = null
@@ -216,7 +231,9 @@ fun TrendChart(
 
                     // Draw selected point indicator
                     selectedPoint?.let { point ->
-                        val index = dailyPoints.indexOf(point)
+                        val activePoints = if (activeLineIsDaily) dailyPoints else rollingPoints
+                        val activeColor = if (activeLineIsDaily) colorScheme.primary else colorScheme.tertiary
+                        val index = activePoints.indexOf(point)
                         if (index >= 0) {
                             val offset = point.toOffset(index)
 
@@ -224,13 +241,13 @@ fun TrendChart(
                             drawLine(
                                 start = Offset(offset.x, 0f),
                                 end = Offset(offset.x, chartHeight),
-                                color = colorScheme.primary.copy(alpha = 0.3f),
+                                color = activeColor.copy(alpha = 0.3f),
                                 strokeWidth = 2.dp.toPx()
                             )
 
                             // Draw circle at point
                             drawCircle(
-                                color = colorScheme.primary,
+                                color = activeColor,
                                 radius = 6.dp.toPx(),
                                 center = offset,
                                 style = Stroke(width = 2.dp.toPx())
@@ -254,7 +271,8 @@ fun TrendChart(
                 }
 
                 // Calculate the actual point position on screen
-                val index = dailyPoints.indexOf(point)
+                val activePoints = if (activeLineIsDaily) dailyPoints else rollingPoints
+                val index = activePoints.indexOf(point)
                 if (index >= 0 && chartWidth > 0) {
                     val stepX = chartWidth / (pointCount - 1)
                     val normalizedY = (point.weightKg - minY) / yRange
@@ -352,10 +370,24 @@ fun TrendChart(
 private fun LegendItem(
     color: Color,
     label: String,
+    isActive: Boolean,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colorScheme = MaterialTheme.colorScheme
+    val backgroundColor = if (isActive) {
+        colorScheme.primaryContainer.copy(alpha = 0.3f)
+    } else {
+        Color.Transparent
+    }
+
     Row(
-        modifier = modifier,
+        modifier = modifier
+            .background(backgroundColor, RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .then(
+                if (!isActive) Modifier.clickable(onClick = onClick) else Modifier
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -367,7 +399,8 @@ private fun LegendItem(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (isActive) colorScheme.onPrimaryContainer else colorScheme.onSurfaceVariant,
+            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal
         )
     }
 }

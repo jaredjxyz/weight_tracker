@@ -1,7 +1,6 @@
 package com.example.weighttracker.ui
 
 import android.util.Log
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -47,12 +46,15 @@ private enum class WeightTrackerDestination(
 
 @Composable
 fun WeightTrackerApp(
-    viewModel: WeightTrackerViewModel
+    viewModel: WeightTrackerViewModel,
+    openAddWeightFromWidget: Boolean = false,
+    onWidgetActionConsumed: () -> Unit = {}
 ) {
     WeightTrackerTheme {
         val context = LocalContext.current
         val navController = rememberNavController()
         val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+        var shouldFocusInput by rememberSaveable { mutableStateOf(false) }
 
         val installHealthConnect = remember(context) {
             { context.launchHealthConnectInstall() }
@@ -79,19 +81,9 @@ fun WeightTrackerApp(
                 when (uiState.availability) {
                     HealthConnectStatus.NOT_INSTALLED -> installHealthConnect()
                     HealthConnectStatus.NOT_SUPPORTED -> {
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.toast_open_health_connect),
-                            Toast.LENGTH_LONG
-                        ).show()
                         openHealthConnectSettings()
                     }
                     else -> {
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.toast_requesting_permissions),
-                            Toast.LENGTH_SHORT
-                        ).show()
                         Log.d("WeightTracker", "Launching Health Connect permission launcher")
                         Log.d("WeightTracker", "Permissions being requested: ${HealthConnectPermissions.weightPermissions}")
                         permissionLauncher.launch(HealthConnectPermissions.weightPermissions)
@@ -110,14 +102,23 @@ fun WeightTrackerApp(
             ) {
                 autoPrompted = true
                 Log.d("WeightTracker", "Auto prompting Health Connect permission request")
-                Toast.makeText(
-                    context,
-                    context.getString(R.string.toast_requesting_permissions),
-                    Toast.LENGTH_SHORT
-                ).show()
                 Log.d("WeightTracker", "Auto-launching Health Connect permission contract")
                 Log.d("WeightTracker", "Permissions being requested: ${HealthConnectPermissions.weightPermissions}")
                 permissionLauncher.launch(HealthConnectPermissions.weightPermissions)
+            }
+        }
+
+        LaunchedEffect(openAddWeightFromWidget) {
+            if (openAddWeightFromWidget) {
+                navController.navigate(WeightTrackerDestination.Log.route) {
+                    launchSingleTop = true
+                    restoreState = true
+                    popUpTo(navController.graph.startDestinationId) {
+                        saveState = true
+                    }
+                }
+                shouldFocusInput = true
+                onWidgetActionConsumed()
             }
         }
 
@@ -132,7 +133,9 @@ fun WeightTrackerApp(
                 viewModel = viewModel,
                 uiState = uiState,
                 onRequestPermissions = handleGrantPermissions,
-                onInstallHealthConnect = installHealthConnect
+                onInstallHealthConnect = installHealthConnect,
+                shouldFocusInput = shouldFocusInput,
+                onFocusConsumed = { shouldFocusInput = false }
             )
         }
     }
@@ -145,7 +148,9 @@ private fun WeightTrackerNavHost(
     viewModel: WeightTrackerViewModel,
     uiState: WeightTrackerUiState,
     onRequestPermissions: () -> Unit,
-    onInstallHealthConnect: () -> Unit
+    onInstallHealthConnect: () -> Unit,
+    shouldFocusInput: Boolean,
+    onFocusConsumed: () -> Unit
 ) {
     NavHost(
         navController = navController,
@@ -165,9 +170,10 @@ private fun WeightTrackerNavHost(
                 uiState = uiState,
                 onAddWeight = viewModel::addWeight,
                 onDeleteWeight = viewModel::deleteWeight,
-                onChangeUnit = viewModel::updatePreferredUnit,
                 onGrantPermissions = onRequestPermissions,
-                onInstallHealthConnect = onInstallHealthConnect
+                onInstallHealthConnect = onInstallHealthConnect,
+                shouldFocusInput = shouldFocusInput,
+                onFocusConsumed = onFocusConsumed
             )
         }
     }

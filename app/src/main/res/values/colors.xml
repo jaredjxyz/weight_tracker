@@ -4,4 +4,10 @@
     <color name="md_theme_onPrimary">#FFFFFF</color>
     <color name="md_theme_background">#FFFFFF</color>
     <color name="md_theme_onBackground">#1C1C1C</color>
+    <color name="widget_background_surface">#FFFFFF</color>
+    <color name="widget_outline">#E0E0E0</color>
+    <color name="widget_button_background">#1C1C1C</color>
+    <color name="widget_button_text">#FFFFFF</color>
+    <color name="widget_button_ripple">#33FFFFFF</color>
+    <color name="widget_icon_tint">#FFFFFFFF</color>
 </resources>

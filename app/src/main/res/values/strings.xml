@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Weight Tracker</string>
-    <string name="dashboard_title">Progress</string>
+    <string name="dashboard_title">Charts</string>
     <string name="log_title">Log</string>
 
     <string name="action_refresh">Refresh</string>
@@ -11,6 +11,7 @@
     <string name="action_install_health_connect">Install Health Connect</string>
     <string name="action_save_weight">Save</string>
     <string name="action_cancel">Cancel</string>
+    <string name="widget_description">Log a new weight from your home screen.</string>
 
     <string name="loading_weights">Loading measurements…</string>
     <string name="dashboard_empty_state">No weight measurements yet. Add your first entry to begin tracking trends.</string>
@@ -34,6 +35,4 @@
 
     <string name="unit_kilograms">kg</string>
     <string name="unit_pounds">lb</string>
-    <string name="toast_requesting_permissions">Requesting Health Connect permissions…</string>
-    <string name="toast_open_health_connect">Opening Health Connect so you can review permissions.</string>
 </resources>

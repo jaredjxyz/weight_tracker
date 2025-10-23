@@ -13,10 +13,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.TopAppBar
@@ -32,8 +31,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.weighttracker.R
@@ -53,51 +57,31 @@ fun LogScreen(
     uiState: WeightTrackerUiState,
     onAddWeight: (Double, WeightUnit, Instant) -> Unit,
     onDeleteWeight: (String) -> Unit,
-    onChangeUnit: (WeightUnit) -> Unit,
     onGrantPermissions: () -> Unit,
     onInstallHealthConnect: () -> Unit,
+    shouldFocusInput: Boolean = false,
+    onFocusConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var dialogVisible by remember { mutableStateOf(false) }
-
     Scaffold(
         modifier = modifier,
         topBar = {
             TopAppBar(
                 title = { Text(text = stringResource(id = R.string.log_title)) }
             )
-        },
-        floatingActionButton = {
-            if (uiState.permissionsGranted) {
-                FloatingActionButton(onClick = { dialogVisible = true }) {
-                    Icon(
-                        imageVector = Icons.Outlined.Edit,
-                        contentDescription = stringResource(id = R.string.action_add_weight)
-                    )
-                }
-            }
         }
     ) { innerPadding ->
         LogContent(
             uiState = uiState,
+            onAddWeight = onAddWeight,
             onDeleteWeight = onDeleteWeight,
             onGrantPermissions = onGrantPermissions,
             onInstallHealthConnect = onInstallHealthConnect,
+            shouldFocusInput = shouldFocusInput,
+            onFocusConsumed = onFocusConsumed,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-        )
-    }
-
-    if (dialogVisible) {
-        AddWeightDialog(
-            preferredUnit = uiState.preferredUnit,
-            onConfirm = { value, unit ->
-                onAddWeight(value, unit, Instant.now())
-                onChangeUnit(unit)
-                dialogVisible = false
-            },
-            onDismiss = { dialogVisible = false }
         )
     }
 }
@@ -105,9 +89,12 @@ fun LogScreen(
 @Composable
 private fun LogContent(
     uiState: WeightTrackerUiState,
+    onAddWeight: (Double, WeightUnit, Instant) -> Unit,
     onDeleteWeight: (String) -> Unit,
     onGrantPermissions: () -> Unit,
     onInstallHealthConnect: () -> Unit,
+    shouldFocusInput: Boolean = false,
+    onFocusConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     when (uiState.availability) {
@@ -145,7 +132,10 @@ private fun LogContent(
                 else -> WeightList(
                     entries = uiState.entries,
                     unit = uiState.preferredUnit,
+                    onAddWeight = onAddWeight,
                     onDeleteWeight = onDeleteWeight,
+                    shouldFocusInput = shouldFocusInput,
+                    onFocusConsumed = onFocusConsumed,
                     modifier = modifier
                 )
             }
@@ -157,14 +147,41 @@ private fun LogContent(
 private fun WeightList(
     entries: List<WeightEntry>,
     unit: WeightUnit,
+    onAddWeight: (Double, WeightUnit, Instant) -> Unit,
     onDeleteWeight: (String) -> Unit,
+    shouldFocusInput: Boolean = false,
+    onFocusConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    var quickEntryValue by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(shouldFocusInput) {
+        if (shouldFocusInput) {
+            focusRequester.requestFocus()
+            onFocusConsumed()
+        }
+    }
+
     LazyColumn(
         modifier = modifier.padding(horizontal = 16.dp),
         contentPadding = PaddingValues(bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        item {
+            QuickEntryField(
+                value = quickEntryValue,
+                onValueChange = { quickEntryValue = it },
+                unit = unit,
+                onSubmit = { weight ->
+                    onAddWeight(weight, unit, Instant.now())
+                    quickEntryValue = ""
+                },
+                focusRequester = focusRequester,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
+        }
+
         items(entries, key = { it.id }) { entry ->
             WeightRow(
                 entry = entry,
@@ -226,62 +243,67 @@ private fun WeightRow(
 }
 
 @Composable
-private fun AddWeightDialog(
-    preferredUnit: WeightUnit,
-    onConfirm: (Double, WeightUnit) -> Unit,
-    onDismiss: () -> Unit
+private fun QuickEntryField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    unit: WeightUnit,
+    onSubmit: (Double) -> Unit,
+    focusRequester: FocusRequester = remember { FocusRequester() },
+    modifier: Modifier = Modifier
 ) {
-    var weightInput by remember { mutableStateOf("") }
-    var selectedUnit by remember { mutableStateOf(preferredUnit) }
-    val isConfirmEnabled = remember(weightInput) { weightInput.toDoubleOrNull() != null }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        confirmButton = {
-            TextButton(onClick = {
-                weightInput.toDoubleOrNull()?.let { value ->
-                    onConfirm(value, selectedUnit)
-                }
-            }, enabled = isConfirmEnabled) {
-                Text(text = stringResource(id = R.string.action_save_weight))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = stringResource(id = R.string.action_cancel))
-            }
-        },
-        title = { Text(text = stringResource(id = R.string.add_weight_title)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = weightInput,
-                    onValueChange = { weightInput = it },
-                    label = { Text(text = stringResource(id = R.string.add_weight_field_label)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    singleLine = true
-                )
-                WeightUnitSelector(
-                    selectedUnit = selectedUnit,
-                    onUnitSelected = { selectedUnit = it }
-                )
-            }
-        }
-    )
-}
-
-@Composable
-private fun WeightUnitSelector(
-    selectedUnit: WeightUnit,
-    onUnitSelected: (WeightUnit) -> Unit
-) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        WeightUnit.values().forEach { unit ->
-            FilterChip(
-                selected = selectedUnit == unit,
-                onClick = { onUnitSelected(unit) },
-                label = { Text(text = unitLabel(unit)) }
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                placeholder = { Text("Enter weight") },
+                suffix = { Text(unit.symbol) },
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Decimal,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        value.toDoubleOrNull()?.let { weight ->
+                            onSubmit(weight)
+                        }
+                    }
+                ),
+                singleLine = true,
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(focusRequester)
             )
+
+            IconButton(
+                onClick = {
+                    value.toDoubleOrNull()?.let { weight ->
+                        onSubmit(weight)
+                    }
+                },
+                enabled = value.toDoubleOrNull() != null
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Edit,
+                    contentDescription = stringResource(R.string.action_add_weight),
+                    tint = if (value.toDoubleOrNull() != null) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                    }
+                )
+            }
         }
     }
 }
