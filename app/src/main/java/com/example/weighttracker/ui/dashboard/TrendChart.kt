@@ -4,6 +4,8 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -23,12 +26,22 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.Dp
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlin.math.max
+import kotlin.math.min
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -65,13 +78,56 @@ fun TrendChart(
     val colorScheme = MaterialTheme.colorScheme
     val textStyle = MaterialTheme.typography.labelSmall
 
-    val combined = remember(dailyPoints, rollingPoints) {
-        (dailyPoints + rollingPoints).distinctBy { it.date to it.weightKg }
-    }
-    val allPoints = dailyPoints.ifEmpty { rollingPoints }
+    // Display window constants
+    val displayDays = 7
+    val dayWidth = 60.dp // Width per day in the chart
 
-    val minY = combined.minOf { it.weightKg }
-    val maxY = combined.maxOf { it.weightKg }
+    // Scroll state for horizontal scrolling
+    val scrollState = rememberScrollState()
+
+    // Calculate which data points are visible based on scroll position
+    val density = LocalDensity.current
+    val scrollOffset by remember { derivedStateOf { scrollState.value } }
+
+    // Take last N points for initial view (scrolled to most recent)
+    val totalDays = pointCount
+
+    // Calculate visible window start/end indices
+    val chartWidthPx by remember { derivedStateOf { displayDays * with(density) { dayWidth.toPx() } } }
+    val totalWidthPx by remember { derivedStateOf { totalDays * with(density) { dayWidth.toPx() } } }
+
+    var visibleStartIndex by remember { mutableStateOf(max(0, totalDays - displayDays)) }
+    var visibleEndIndex by remember { mutableStateOf(totalDays) }
+
+    // Update visible indices based on scroll
+    LaunchedEffect(scrollOffset, totalDays) {
+        val scrollFraction = if (totalWidthPx > chartWidthPx) {
+            scrollOffset / (totalWidthPx - chartWidthPx)
+        } else 0f
+
+        visibleStartIndex = (scrollFraction * (totalDays - displayDays)).toInt().coerceIn(0, max(0, totalDays - displayDays))
+        visibleEndIndex = (visibleStartIndex + displayDays).coerceAtMost(totalDays)
+    }
+
+    // Get visible data points
+    val visibleDaily = remember(dailyPoints, visibleStartIndex, visibleEndIndex) {
+        dailyPoints.drop(visibleStartIndex).take(visibleEndIndex - visibleStartIndex)
+    }
+    val visibleRolling = remember(rollingPoints, visibleStartIndex, visibleEndIndex) {
+        rollingPoints.drop(visibleStartIndex).take(visibleEndIndex - visibleStartIndex)
+    }
+
+    // Calculate dynamic y-axis range based on visible data
+    val visibleCombined = remember(visibleDaily, visibleRolling) {
+        (visibleDaily + visibleRolling).distinctBy { it.date to it.weightKg }
+    }
+
+    val minY = remember(visibleCombined) {
+        visibleCombined.minOfOrNull { it.weightKg } ?: 0.0
+    }
+    val maxY = remember(visibleCombined) {
+        visibleCombined.maxOfOrNull { it.weightKg } ?: 100.0
+    }
     val yRange = (maxY - minY).takeIf { it != 0.0 } ?: 1.0
 
     val minWeight = when (unit) {
@@ -85,13 +141,18 @@ fun TrendChart(
 
     val dateFormatter = remember { DateTimeFormatter.ofPattern("M/d") }
     val detailDateFormatter = remember { DateTimeFormatter.ofPattern("MMM d, yyyy") }
-    val firstDate = allPoints.firstOrNull()?.date?.format(dateFormatter) ?: ""
-    val lastDate = allPoints.lastOrNull()?.date?.format(dateFormatter) ?: ""
+    val firstDate = visibleDaily.firstOrNull()?.date?.format(dateFormatter) ?: ""
+    val lastDate = visibleDaily.lastOrNull()?.date?.format(dateFormatter) ?: ""
 
     var selectedPoint by remember { mutableStateOf<TrendPoint?>(null) }
     var tapPosition by remember { mutableStateOf<Offset?>(null) }
     var chartWidth by remember { mutableStateOf(0f) }
     var activeLineIsDaily by remember { mutableStateOf(true) }
+
+    // Scroll to end on first composition
+    LaunchedEffect(Unit) {
+        scrollState.scrollTo(scrollState.maxValue)
+    }
 
     Column(modifier = modifier) {
         // Legend
@@ -133,130 +194,135 @@ fun TrendChart(
                 // Y-axis space
                 Spacer(modifier = Modifier.width(40.dp))
 
-                // Chart canvas
-                Canvas(
+                // Scrollable chart container
+                Box(
                     modifier = Modifier
                         .weight(1f)
                         .height(200.dp)
-                        .padding(horizontal = 4.dp)
-                        .pointerInput(activeLineIsDaily, dailyPoints, rollingPoints) {
-                            detectTapGestures { offset ->
-                                val chartWidth = size.width.toFloat()
-                                val chartHeight = size.height
-                                val stepX = chartWidth / (pointCount - 1)
-                                val activePoints = if (activeLineIsDaily) dailyPoints else rollingPoints
+                        .horizontalScroll(scrollState)
+                ) {
+                    // Chart canvas with fixed width based on total days
+                    Canvas(
+                        modifier = Modifier
+                            .width(dayWidth * totalDays)
+                            .height(200.dp)
+                            .padding(horizontal = 4.dp)
+                            .pointerInput(activeLineIsDaily, visibleDaily, visibleRolling, minY, yRange) {
+                                detectTapGestures { offset ->
+                                    val chartHeight = size.height
+                                    val visiblePoints = if (activeLineIsDaily) visibleDaily else visibleRolling
+                                    val visiblePointCount = visiblePoints.size
+                                    if (visiblePointCount < 2) return@detectTapGestures
 
-                                // Find closest point on active line
-                                var closestIndex = -1
-                                var closestDistance = Float.MAX_VALUE
+                                    val stepX = size.width / (totalDays - 1)
 
-                                activePoints.forEachIndexed { index, point ->
-                                    val x = index * stepX
-                                    val normalizedY = (point.weightKg - minY) / yRange
-                                    val y = chartHeight - (normalizedY * chartHeight).toFloat()
+                                    // Find closest point on active line
+                                    var closestIndex = -1
+                                    var closestDistance = Float.MAX_VALUE
 
-                                    // Calculate distance to this point
-                                    val dx = offset.x - x
-                                    val dy = offset.y - y
-                                    val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+                                    visiblePoints.forEachIndexed { localIndex, point ->
+                                        val globalIndex = visibleStartIndex + localIndex
+                                        val x = globalIndex * stepX
+                                        val normalizedY = (point.weightKg - minY) / yRange
+                                        val y = chartHeight - (normalizedY * chartHeight).toFloat()
 
-                                    if (distance < closestDistance && distance < 40.dp.toPx()) {
-                                        closestDistance = distance
-                                        closestIndex = index
+                                        // Calculate distance to this point
+                                        val dx = offset.x - x
+                                        val dy = offset.y - y
+                                        val distance = kotlin.math.sqrt(dx * dx + dy * dy)
+
+                                        if (distance < closestDistance && distance < 40.dp.toPx()) {
+                                            closestDistance = distance
+                                            closestIndex = localIndex
+                                        }
+                                    }
+
+                                    if (closestIndex >= 0 && closestIndex < visiblePoints.size) {
+                                        selectedPoint = visiblePoints[closestIndex]
+                                        tapPosition = offset
+                                    } else {
+                                        selectedPoint = null
+                                        tapPosition = null
                                     }
                                 }
+                            }
+                    ) {
+                        val chartHeight = size.height
+                        chartWidth = size.width
+                        val stepX = chartWidth / (totalDays - 1)
 
-                                if (closestIndex >= 0 && closestIndex < activePoints.size) {
-                                    selectedPoint = activePoints[closestIndex]
-                                    tapPosition = offset
-                                } else {
-                                    selectedPoint = null
-                                    tapPosition = null
+                        fun TrendPoint.toOffset(globalIndex: Int): Offset {
+                            val x = globalIndex * stepX
+                            val normalizedY = (weightKg - minY) / yRange
+                            val y = chartHeight - (normalizedY * chartHeight)
+                            return Offset(x, y.toFloat())
+                        }
+
+                        fun drawDataLine(points: List<TrendPoint>, startIndex: Int, color: Color, strokeWidth: Float) {
+                            if (points.size < 2) return
+                            val path = Path().apply {
+                                val first = points.first().toOffset(startIndex)
+                                moveTo(first.x, first.y)
+                                points.forEachIndexed { localIndex, point ->
+                                    val globalIndex = startIndex + localIndex
+                                    val offset = point.toOffset(globalIndex)
+                                    lineTo(offset.x, offset.y)
                                 }
                             }
-                        }
-                ) {
-                    val chartHeight = size.height
-                    chartWidth = size.width
-                    val stepX = chartWidth / (pointCount - 1)
-
-                    fun TrendPoint.toOffset(listIndex: Int): Offset {
-                        val x = listIndex * stepX
-                        val normalizedY = (weightKg - minY) / yRange
-                        val y = chartHeight - (normalizedY * chartHeight)
-                        return Offset(x, y.toFloat())
-                    }
-
-                    fun drawLine(points: List<TrendPoint>, color: Color, strokeWidth: Float) {
-                        if (points.size < 2) return
-                        val path = Path().apply {
-                            val first = points.first().toOffset(0)
-                            moveTo(first.x, first.y)
-                            points.forEachIndexed { index, point ->
-                                val offset = point.toOffset(index)
-                                lineTo(offset.x, offset.y)
-                            }
-                        }
-                        drawPath(
-                            path = path,
-                            color = color,
-                            style = Stroke(
-                                width = strokeWidth,
-                                cap = StrokeCap.Round,
-                                join = StrokeJoin.Round
+                            drawPath(
+                                path = path,
+                                color = color,
+                                style = Stroke(
+                                    width = strokeWidth,
+                                    cap = StrokeCap.Round,
+                                    join = StrokeJoin.Round
+                                )
                             )
+                        }
+
+                        // Draw axis lines
+                        drawLine(
+                            start = Offset(0f, chartHeight),
+                            end = Offset(chartWidth, chartHeight),
+                            color = colorScheme.outline,
+                            strokeWidth = 1.dp.toPx(),
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
                         )
-                    }
 
-                    // Draw axis lines
-                    drawLine(
-                        start = Offset(0f, chartHeight),
-                        end = Offset(chartWidth, chartHeight),
-                        color = colorScheme.outline,
-                        strokeWidth = 1.dp.toPx(),
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
-                    )
+                        // Draw data lines
+                        drawDataLine(visibleDaily, visibleStartIndex, colorScheme.primary, 4.dp.toPx())
+                        drawDataLine(visibleRolling, visibleStartIndex, colorScheme.tertiary, 3.dp.toPx())
 
-                    drawLine(
-                        start = Offset(0f, 0f),
-                        end = Offset(0f, chartHeight),
-                        color = colorScheme.outline,
-                        strokeWidth = 1.dp.toPx(),
-                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
-                    )
+                        // Draw selected point indicator
+                        selectedPoint?.let { point ->
+                            val activePoints = if (activeLineIsDaily) visibleDaily else visibleRolling
+                            val activeColor = if (activeLineIsDaily) colorScheme.primary else colorScheme.tertiary
+                            val localIndex = activePoints.indexOf(point)
+                            if (localIndex >= 0) {
+                                val globalIndex = visibleStartIndex + localIndex
+                                val offset = point.toOffset(globalIndex)
 
-                    // Draw data lines
-                    drawLine(dailyPoints, colorScheme.primary, 4.dp.toPx())
-                    drawLine(rollingPoints, colorScheme.tertiary, 3.dp.toPx())
+                                // Draw vertical line
+                                drawLine(
+                                    start = Offset(offset.x, 0f),
+                                    end = Offset(offset.x, chartHeight),
+                                    color = activeColor.copy(alpha = 0.3f),
+                                    strokeWidth = 2.dp.toPx()
+                                )
 
-                    // Draw selected point indicator
-                    selectedPoint?.let { point ->
-                        val activePoints = if (activeLineIsDaily) dailyPoints else rollingPoints
-                        val activeColor = if (activeLineIsDaily) colorScheme.primary else colorScheme.tertiary
-                        val index = activePoints.indexOf(point)
-                        if (index >= 0) {
-                            val offset = point.toOffset(index)
-
-                            // Draw vertical line
-                            drawLine(
-                                start = Offset(offset.x, 0f),
-                                end = Offset(offset.x, chartHeight),
-                                color = activeColor.copy(alpha = 0.3f),
-                                strokeWidth = 2.dp.toPx()
-                            )
-
-                            // Draw circle at point
-                            drawCircle(
-                                color = activeColor,
-                                radius = 6.dp.toPx(),
-                                center = offset,
-                                style = Stroke(width = 2.dp.toPx())
-                            )
-                            drawCircle(
-                                color = colorScheme.surface,
-                                radius = 4.dp.toPx(),
-                                center = offset
-                            )
+                                // Draw circle at point
+                                drawCircle(
+                                    color = activeColor,
+                                    radius = 6.dp.toPx(),
+                                    center = offset,
+                                    style = Stroke(width = 2.dp.toPx())
+                                )
+                                drawCircle(
+                                    color = colorScheme.surface,
+                                    radius = 4.dp.toPx(),
+                                    center = offset
+                                )
+                            }
                         }
                     }
                 }
@@ -264,77 +330,35 @@ fun TrendChart(
 
             // Tooltip overlay
             selectedPoint?.let { point ->
-                val density = LocalDensity.current
                 val weightValue = when (unit) {
                     WeightUnit.Kilograms -> point.weightKg
                     WeightUnit.Pounds -> point.weightKg * 2.20462
                 }
 
-                // Calculate the actual point position on screen
-                val activePoints = if (activeLineIsDaily) dailyPoints else rollingPoints
-                val index = activePoints.indexOf(point)
-                if (index >= 0 && chartWidth > 0) {
-                    val stepX = chartWidth / (pointCount - 1)
-                    val normalizedY = (point.weightKg - minY) / yRange
-                    val pointX = index * stepX
-                    val pointY = 200.dp * (1 - normalizedY.toFloat())
-
-                    // Popup dimensions
-                    val popupHeight = 70.dp
-                    val popupWidth = 140.dp
-
-                    // Smart Y positioning: above or below the point
-                    val yOffset = if (pointY < popupHeight + 20.dp) {
-                        // Point is near top, place below
-                        pointY + 30.dp
-                    } else {
-                        // Place above the point
-                        pointY - popupHeight - 10.dp
-                    }
-
-                    // Smart X positioning: centered on point but within bounds
-                    val xOffset = with(density) {
-                        val yAxisWidth = 40.dp
-                        val canvasPadding = 4.dp
-                        val pointScreenX = yAxisWidth + canvasPadding + (pointX / density.density).dp
-                        val centered = pointScreenX - (popupWidth / 2)
-                        val minX = yAxisWidth + canvasPadding
-                        val maxX = yAxisWidth + canvasPadding + (chartWidth / density.density).dp - popupWidth
-                        centered.coerceIn(minX, maxX)
-                    }
-
-                    Popup(
-                        alignment = Alignment.TopStart,
-                        offset = with(density) {
-                            IntOffset(
-                                x = xOffset.toPx().roundToInt(),
-                                y = yOffset.toPx().roundToInt()
-                            )
-                        }
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = 8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = colorScheme.primaryContainer
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Card(
-                            colors = CardDefaults.cardColors(
-                                containerColor = colorScheme.primaryContainer
-                            ),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = point.date.format(detailDateFormatter),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = colorScheme.onPrimaryContainer
-                                )
-                                Text(
-                                    text = "%.1f %s".format(weightValue, unit.symbol),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = colorScheme.onPrimaryContainer
-                                )
-                            }
-                        }
+                        Text(
+                            text = point.date.format(detailDateFormatter),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = "%.1f %s".format(weightValue, unit.symbol),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colorScheme.onPrimaryContainer
+                        )
                     }
                 }
             }
