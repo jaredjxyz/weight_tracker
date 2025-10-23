@@ -5,15 +5,23 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
+    <!-- Trend arrow up -->
     <path
-        android:fillColor="@android:color/white"
-        android:pathData="M54,18a36,36 0,1 1 0,72a36,36 0,1 1 0,-72" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,38 L62,50 L58,50 L58,58 L50,58 L50,50 L46,50 z" />
 
+    <!-- Weight scale platform -->
     <path
-        android:fillColor="#006C4A"
-        android:pathData="M54,30a24,24 0,1 1 0,48a24,24 0,1 1 0,-48" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M32,66 L76,66 A4,4 0,0 1 80,70 L80,72 A4,4 0,0 1 76,76 L32,76 A4,4 0,0 1 28,72 L28,70 A4,4 0,0 1 32,66 z" />
 
+    <!-- Scale base -->
     <path
-        android:fillColor="@android:color/white"
-        android:pathData="M44,66h20a2,2 0,0 0 2,-2v-2a12,12 0,0 0 -12,-12h-2a2,2 0,0 0 0,4h2a8,8 0,0 1 8,8h-16a2,2 0,0 0 0,4z" />
+        android:fillColor="#E0E0E0"
+        android:pathData="M40,76 L68,76 L64,82 A2,2 0,0 1 62,83 L46,83 A2,2 0,0 1 44,82 z" />
+
+    <!-- Subtle accent line -->
+    <path
+        android:fillColor="#BDBDBD"
+        android:pathData="M36,70 L72,70 A1,1 0,0 1 72,72 L36,72 A1,1 0,0 1 36,70 z" />
 </vector>
