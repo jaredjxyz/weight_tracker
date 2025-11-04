@@ -24,6 +24,7 @@
 
     <string name="log_empty_state">Weights you record will appear here. Grant access and add your first entry to get started.</string>
     <string name="log_weight_value">%1$.1f %2$s</string>
+    <string name="log_7day_average">7-day avg: %1$.1f %2$s</string>
     <string name="add_weight_title">New weight</string>
     <string name="add_weight_field_label">Weight</string>
 

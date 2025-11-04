@@ -50,6 +50,8 @@ import com.example.weighttracker.ui.components.LoadingState
 import com.example.weighttracker.ui.components.PermissionCallout
 import com.example.weighttracker.data.healthconnect.HealthConnectStatus
 import java.time.Instant
+import java.time.Duration
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -185,6 +187,7 @@ private fun WeightList(
         items(entries, key = { it.id }) { entry ->
             WeightRow(
                 entry = entry,
+                allEntries = entries,
                 unit = unit,
                 onDeleteWeight = onDeleteWeight
             )
@@ -195,9 +198,12 @@ private fun WeightList(
 @Composable
 private fun WeightRow(
     entry: WeightEntry,
+    allEntries: List<WeightEntry>,
     unit: WeightUnit,
     onDeleteWeight: (String) -> Unit
 ) {
+    val sevenDayAverage = calculate7DayAverage(entry, allEntries, unit)
+    
     androidx.compose.material3.Card(
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -237,6 +243,19 @@ private fun WeightRow(
                         contentDescription = stringResource(R.string.action_delete_entry)
                     )
                 }
+            }
+            
+            if (sevenDayAverage != null) {
+                Text(
+                    text = stringResource(
+                        id = R.string.log_7day_average,
+                        sevenDayAverage,
+                        unitLabel(unit)
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp)
+                )
             }
         }
     }
@@ -314,3 +333,30 @@ private fun WeightEntry.rounded(unit: WeightUnit): Double = when (unit) {
 }
 
 private fun unitLabel(unit: WeightUnit): String = unit.symbol
+
+private fun calculate7DayAverage(
+    entry: WeightEntry,
+    allEntries: List<WeightEntry>,
+    unit: WeightUnit
+): Double? {
+    val sevenDaysAgo = entry.recordedAt.minus(Duration.ofDays(7))
+    
+    val entriesInRange = allEntries.filter { otherEntry ->
+        !otherEntry.recordedAt.isBefore(sevenDaysAgo) && 
+        !otherEntry.recordedAt.isAfter(entry.recordedAt)
+    }
+    
+    if (entriesInRange.isEmpty()) {
+        return null
+    }
+    
+    val totalWeight = entriesInRange.sumOf { entryInRange ->
+        when (unit) {
+            WeightUnit.Kilograms -> entryInRange.weightKg
+            WeightUnit.Pounds -> entryInRange.weightLbs()
+        }
+    }
+    
+    val average = totalWeight / entriesInRange.size
+    return (average * 10).roundToInt() / 10.0
+}
