@@ -3,6 +3,7 @@
     <string name="app_name">Weight Tracker</string>
     <string name="dashboard_title">Charts</string>
     <string name="log_title">Log</string>
+    <string name="goals_title">Goals</string>
 
     <string name="action_refresh">Refresh</string>
     <string name="action_add_weight">Add weight</string>

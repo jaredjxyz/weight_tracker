@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import com.example.weighttracker.domain.model.TrendPoint
 import com.example.weighttracker.domain.model.WeightUnit
+import com.example.weighttracker.domain.model.WeightGoal
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -72,12 +73,43 @@ fun TrendChart(
     dailyPoints: List<TrendPoint>,
     rollingPoints: List<TrendPoint>,
     unit: WeightUnit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    goals: List<WeightGoal> = emptyList()
 ) {
-    val pointCount = maxOf(dailyPoints.size, rollingPoints.size)
-    if (pointCount < 2) {
+    // Convert goals to TrendPoints
+    val goalPoints = remember(goals) {
+        goals.map { goal ->
+            TrendPoint(
+                date = goal.targetDate,
+                weightKg = goal.targetWeightKg
+            )
+        }.sortedBy { it.date }
+    }
+
+    // Calculate date range for positioning
+    val dateRange = remember(dailyPoints, rollingPoints, goalPoints) {
+        val allPoints = dailyPoints + rollingPoints + goalPoints
+        if (allPoints.isEmpty()) return@remember null
+
+        val minDate = allPoints.minOf { it.date }
+        val maxDate = allPoints.maxOf { it.date }
+        val totalDays = java.time.temporal.ChronoUnit.DAYS.between(minDate, maxDate).toInt() + 1
+
+        Triple(minDate, maxDate, totalDays)
+    }
+
+    if (dateRange == null || dateRange.third < 2) {
         EmptyTrend(modifier)
         return
+    }
+
+    val (minDate, maxDate, totalDays) = dateRange
+
+    // Create date-to-position mapping based on days from start
+    val dateToPosition = remember(minDate, maxDate) {
+        { date: java.time.LocalDate ->
+            java.time.temporal.ChronoUnit.DAYS.between(minDate, date).toInt()
+        }
     }
 
     val colorScheme = MaterialTheme.colorScheme
@@ -93,9 +125,6 @@ fun TrendChart(
     // Calculate which data points are visible based on scroll position
     val density = LocalDensity.current
     val scrollOffset by remember { derivedStateOf { scrollState.value } }
-
-    // Take last N points for initial view (scrolled to most recent)
-    val totalDays = pointCount
 
     // Calculate visible window start/end indices
     val chartWidthPx by remember { derivedStateOf { displayDays * with(density) { dayWidth.toPx() } } }
@@ -114,24 +143,35 @@ fun TrendChart(
         visibleEndIndex = (visibleStartIndex + displayDays).coerceAtMost(totalDays)
     }
 
-    // Get visible data points
-    val visibleDaily = remember(dailyPoints, visibleStartIndex, visibleEndIndex) {
-        dailyPoints.drop(visibleStartIndex).take(visibleEndIndex - visibleStartIndex)
+    // Get visible data points based on actual date range
+    val visibleStartDate = remember(minDate, visibleStartIndex) {
+        minDate.plusDays(visibleStartIndex.toLong())
     }
-    val visibleRolling = remember(rollingPoints, visibleStartIndex, visibleEndIndex) {
-        rollingPoints.drop(visibleStartIndex).take(visibleEndIndex - visibleStartIndex)
+    val visibleEndDate = remember(minDate, visibleEndIndex) {
+        minDate.plusDays(visibleEndIndex.toLong())
     }
 
-    // Calculate dynamic y-axis range based on visible data
+    val visibleDaily = remember(dailyPoints, visibleStartDate, visibleEndDate) {
+        dailyPoints.filter { it.date >= visibleStartDate && it.date < visibleEndDate }
+    }
+    val visibleRolling = remember(rollingPoints, visibleStartDate, visibleEndDate) {
+        rollingPoints.filter { it.date >= visibleStartDate && it.date < visibleEndDate }
+    }
+
+    // Calculate dynamic y-axis range based on visible data and goals
     val visibleCombined = remember(visibleDaily, visibleRolling) {
         (visibleDaily + visibleRolling).distinctBy { it.date to it.weightKg }
     }
 
-    val targetMinY = remember(visibleCombined) {
-        visibleCombined.minOfOrNull { it.weightKg } ?: 0.0
+    val targetMinY = remember(visibleCombined, goals) {
+        val dataMin = visibleCombined.minOfOrNull { it.weightKg } ?: 0.0
+        val goalMin = goals.minOfOrNull { it.targetWeightKg } ?: Double.MAX_VALUE
+        minOf(dataMin, goalMin)
     }
-    val targetMaxY = remember(visibleCombined) {
-        visibleCombined.maxOfOrNull { it.weightKg } ?: 100.0
+    val targetMaxY = remember(visibleCombined, goals) {
+        val dataMax = visibleCombined.maxOfOrNull { it.weightKg } ?: 100.0
+        val goalMax = goals.maxOfOrNull { it.targetWeightKg } ?: Double.MIN_VALUE
+        maxOf(dataMax, goalMax)
     }
 
     // Animated y-axis range for smooth transitions
@@ -173,17 +213,29 @@ fun TrendChart(
 
     val dateFormatter = remember { DateTimeFormatter.ofPattern("M/d") }
     val detailDateFormatter = remember { DateTimeFormatter.ofPattern("MMM d, yyyy") }
-    val firstDate = visibleDaily.firstOrNull()?.date?.format(dateFormatter) ?: ""
-    val lastDate = visibleDaily.lastOrNull()?.date?.format(dateFormatter) ?: ""
+    val firstDate = visibleStartDate.format(dateFormatter)
+    val lastDate = visibleEndDate.minusDays(1).format(dateFormatter)
 
     var selectedPoint by remember { mutableStateOf<TrendPoint?>(null) }
     var tapPosition by remember { mutableStateOf<Offset?>(null) }
     var chartWidth by remember { mutableStateOf(0f) }
-    var activeLineIsDaily by remember { mutableStateOf(true) }
 
-    // Scroll to end on first composition
-    LaunchedEffect(Unit) {
-        scrollState.scrollTo(scrollState.maxValue)
+    // Active line selection: 0=daily, 1=rolling, 2=goals
+    var activeLine by remember { mutableStateOf(0) }
+
+    // Scroll to show today on first composition
+    LaunchedEffect(totalDays, totalWidthPx, chartWidthPx) {
+        if (totalWidthPx > chartWidthPx && totalDays > displayDays) {
+            val today = java.time.LocalDate.now()
+            // Calculate days from minDate to today
+            val daysToToday = java.time.temporal.ChronoUnit.DAYS.between(minDate, today).toInt()
+            // Position today at the right edge of the visible window (subtract displayDays - 1)
+            // because the last date shown is visibleEndDate - 1 day
+            val targetStartIndex = (daysToToday - displayDays + 2).coerceIn(0, totalDays - displayDays)
+            val scrollFraction = targetStartIndex.toFloat() / (totalDays - displayDays)
+            val targetScrollPosition = (scrollFraction * (totalWidthPx - chartWidthPx)).toInt()
+            scrollState.scrollTo(targetScrollPosition)
+        }
     }
 
     Column(modifier = modifier) {
@@ -198,16 +250,26 @@ fun TrendChart(
             LegendItem(
                 color = colorScheme.primary,
                 label = "Daily",
-                isActive = activeLineIsDaily,
-                onClick = { activeLineIsDaily = true },
+                isActive = activeLine == 0,
+                onClick = { activeLine = 0 },
                 modifier = Modifier.padding(end = 16.dp)
             )
             LegendItem(
                 color = colorScheme.tertiary,
                 label = "7-day avg",
-                isActive = !activeLineIsDaily,
-                onClick = { activeLineIsDaily = false }
+                isActive = activeLine == 1,
+                onClick = { activeLine = 1 },
+                modifier = if (goals.isNotEmpty()) Modifier.padding(end = 16.dp) else Modifier
             )
+            if (goals.isNotEmpty()) {
+                LegendItem(
+                    color = colorScheme.secondary,
+                    label = if (goals.size == 1) "Goal" else "Goals",
+                    isActive = activeLine == 2,
+                    onClick = { activeLine = 2 },
+                    isDashed = true
+                )
+            }
         }
 
         Row(modifier = Modifier.fillMaxWidth()) {
@@ -239,22 +301,26 @@ fun TrendChart(
                             .width(dayWidth * totalDays)
                             .height(200.dp)
                             .padding(horizontal = 4.dp)
-                            .pointerInput(activeLineIsDaily, visibleDaily, visibleRolling, minY, yRange) {
+                            .pointerInput(activeLine, visibleDaily, visibleRolling, goalPoints, minY, yRange, dateToPosition) {
                                 detectTapGestures { offset ->
                                     val chartHeight = size.height
-                                    val visiblePoints = if (activeLineIsDaily) visibleDaily else visibleRolling
-                                    val visiblePointCount = visiblePoints.size
-                                    if (visiblePointCount < 2) return@detectTapGestures
+                                    val visiblePoints = when (activeLine) {
+                                        0 -> visibleDaily
+                                        1 -> visibleRolling
+                                        2 -> goalPoints
+                                        else -> visibleDaily
+                                    }
+                                    if (visiblePoints.isEmpty()) return@detectTapGestures
 
                                     val stepX = size.width / (totalDays - 1)
 
                                     // Find closest point on active line
-                                    var closestIndex = -1
+                                    var closestPoint: TrendPoint? = null
                                     var closestDistance = Float.MAX_VALUE
 
-                                    visiblePoints.forEachIndexed { localIndex, point ->
-                                        val globalIndex = visibleStartIndex + localIndex
-                                        val x = globalIndex * stepX
+                                    visiblePoints.forEach { point ->
+                                        val index = dateToPosition(point.date)
+                                        val x = index * stepX
                                         val normalizedY = (point.weightKg - minY) / yRange
                                         val y = chartHeight - (normalizedY * chartHeight).toFloat()
 
@@ -265,12 +331,12 @@ fun TrendChart(
 
                                         if (distance < closestDistance && distance < 40.dp.toPx()) {
                                             closestDistance = distance
-                                            closestIndex = localIndex
+                                            closestPoint = point
                                         }
                                     }
 
-                                    if (closestIndex >= 0 && closestIndex < visiblePoints.size) {
-                                        selectedPoint = visiblePoints[closestIndex]
+                                    if (closestPoint != null) {
+                                        selectedPoint = closestPoint
                                         tapPosition = offset
                                     } else {
                                         selectedPoint = null
@@ -283,21 +349,21 @@ fun TrendChart(
                         chartWidth = size.width
                         val stepX = chartWidth / (totalDays - 1)
 
-                        fun TrendPoint.toOffset(globalIndex: Int): Offset {
-                            val x = globalIndex * stepX
+                        fun TrendPoint.toOffset(): Offset {
+                            val index = dateToPosition(date)
+                            val x = index * stepX
                             val normalizedY = (weightKg - minY) / yRange
                             val y = chartHeight - (normalizedY * chartHeight)
                             return Offset(x, y.toFloat())
                         }
 
-                        fun drawDataLine(points: List<TrendPoint>, startIndex: Int, color: Color, strokeWidth: Float) {
+                        fun drawDataLine(points: List<TrendPoint>, color: Color, strokeWidth: Float, isDashed: Boolean = false) {
                             if (points.size < 2) return
                             val path = Path().apply {
-                                val first = points.first().toOffset(startIndex)
+                                val first = points.first().toOffset()
                                 moveTo(first.x, first.y)
-                                points.forEachIndexed { localIndex, point ->
-                                    val globalIndex = startIndex + localIndex
-                                    val offset = point.toOffset(globalIndex)
+                                points.drop(1).forEach { point ->
+                                    val offset = point.toOffset()
                                     lineTo(offset.x, offset.y)
                                 }
                             }
@@ -307,7 +373,8 @@ fun TrendChart(
                                 style = Stroke(
                                     width = strokeWidth,
                                     cap = StrokeCap.Round,
-                                    join = StrokeJoin.Round
+                                    join = StrokeJoin.Round,
+                                    pathEffect = if (isDashed) PathEffect.dashPathEffect(floatArrayOf(15f, 10f)) else null
                                 )
                             )
                         }
@@ -321,18 +388,34 @@ fun TrendChart(
                             pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
                         )
 
-                        // Draw data lines
-                        drawDataLine(visibleDaily, visibleStartIndex, colorScheme.primary, 4.dp.toPx())
-                        drawDataLine(visibleRolling, visibleStartIndex, colorScheme.tertiary, 3.dp.toPx())
+                        // Draw data lines (use full data sets, not visible filtered)
+                        drawDataLine(dailyPoints, colorScheme.primary, 4.dp.toPx())
+                        drawDataLine(rollingPoints, colorScheme.tertiary, 3.dp.toPx())
+
+                        // Draw goal line as dashed line connecting goal points
+                        if (goalPoints.size >= 2) {
+                            drawDataLine(goalPoints, colorScheme.secondary, 2.dp.toPx(), isDashed = true)
+                        } else if (goalPoints.size == 1) {
+                            // Draw single goal point as a marker
+                            val offset = goalPoints.first().toOffset()
+                            drawCircle(
+                                color = colorScheme.secondary,
+                                radius = 6.dp.toPx(),
+                                center = offset,
+                                style = Stroke(width = 2.dp.toPx())
+                            )
+                        }
 
                         // Draw selected point indicator
                         selectedPoint?.let { point ->
-                            val activePoints = if (activeLineIsDaily) visibleDaily else visibleRolling
-                            val activeColor = if (activeLineIsDaily) colorScheme.primary else colorScheme.tertiary
-                            val localIndex = activePoints.indexOf(point)
-                            if (localIndex >= 0) {
-                                val globalIndex = visibleStartIndex + localIndex
-                                val offset = point.toOffset(globalIndex)
+                            val (activePoints, activeColor) = when (activeLine) {
+                                0 -> visibleDaily to colorScheme.primary
+                                1 -> visibleRolling to colorScheme.tertiary
+                                2 -> goalPoints to colorScheme.secondary
+                                else -> visibleDaily to colorScheme.primary
+                            }
+                            if (activePoints.contains(point)) {
+                                val offset = point.toOffset()
 
                                 // Draw vertical line
                                 drawLine(
@@ -428,7 +511,8 @@ private fun LegendItem(
     label: String,
     isActive: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isDashed: Boolean = false
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val backgroundColor = if (isActive) {
@@ -447,11 +531,23 @@ private fun LegendItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(16.dp, 3.dp)
-                .background(color, RoundedCornerShape(2.dp))
-        )
+        if (isDashed) {
+            Canvas(modifier = Modifier.size(16.dp, 3.dp)) {
+                drawLine(
+                    color = color,
+                    start = Offset(0f, size.height / 2),
+                    end = Offset(size.width, size.height / 2),
+                    strokeWidth = 3.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 3f))
+                )
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(16.dp, 3.dp)
+                    .background(color, RoundedCornerShape(2.dp))
+            )
+        }
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,

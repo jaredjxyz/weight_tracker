@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.example.weighttracker.R
 import com.example.weighttracker.domain.model.TrendPoint
 import com.example.weighttracker.domain.model.WeightUnit
+import com.example.weighttracker.domain.model.WeightGoal
 import com.example.weighttracker.ui.WeightTrackerUiState
 import com.example.weighttracker.ui.components.EmptyState
 import com.example.weighttracker.ui.components.InfoCallout
@@ -127,7 +128,8 @@ private fun LoadedState(
             TrendCard(
                 dailyPoints = uiState.trend.dailyPoints,
                 rollingPoints = uiState.trend.rollingAveragePoints,
-                unit = uiState.preferredUnit
+                unit = uiState.preferredUnit,
+                goals = uiState.goals
             )
         }
     }
@@ -137,7 +139,8 @@ private fun LoadedState(
 private fun TrendCard(
     dailyPoints: List<TrendPoint>,
     rollingPoints: List<TrendPoint>,
-    unit: WeightUnit
+    unit: WeightUnit,
+    goals: List<WeightGoal> = emptyList()
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -154,7 +157,8 @@ private fun TrendCard(
                 dailyPoints = dailyPoints,
                 rollingPoints = rollingPoints,
                 unit = unit,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                goals = goals
             )
         }
     }

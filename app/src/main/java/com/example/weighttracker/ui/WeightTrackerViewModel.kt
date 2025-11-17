@@ -9,9 +9,12 @@ import com.example.weighttracker.data.healthconnect.HealthConnectPermissions
 import com.example.weighttracker.data.healthconnect.HealthConnectAvailabilityChecker
 import com.example.weighttracker.data.healthconnect.HealthConnectStatus
 import com.example.weighttracker.domain.model.WeightEntry
+import com.example.weighttracker.domain.model.WeightGoal
 import com.example.weighttracker.domain.model.WeightTrend
 import com.example.weighttracker.domain.model.WeightUnit
 import com.example.weighttracker.domain.repository.WeightRepository
+import com.example.weighttracker.domain.repository.GoalRepository
+import java.time.LocalDate
 import com.example.weighttracker.domain.usecase.WeightTrendCalculator
 import com.example.weighttracker.health.HealthConnectPermissionManager
 import java.time.Instant
@@ -30,11 +33,13 @@ data class WeightTrackerUiState(
     val preferredUnit: WeightUnit = WeightUnit.Pounds,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
-    val lastSync: Instant? = null
+    val lastSync: Instant? = null,
+    val goals: List<WeightGoal> = emptyList()
 )
 
 class WeightTrackerViewModel(
     private val repository: WeightRepository,
+    private val goalRepository: GoalRepository,
     private val trendCalculator: WeightTrendCalculator,
     private val availabilityChecker: HealthConnectAvailabilityChecker,
     private val permissionManager: HealthConnectPermissionManager
@@ -54,6 +59,7 @@ class WeightTrackerViewModel(
 
     init {
         observeWeights()
+        observeGoals()
         checkAvailabilityAndPermissions()
     }
 
@@ -67,6 +73,16 @@ class WeightTrackerViewModel(
                         isLoading = false,
                         errorMessage = null
                     )
+                }
+            }
+        }
+    }
+
+    private fun observeGoals() {
+        viewModelScope.launch(repositoryHandler) {
+            goalRepository.goalsStream.collect { goals ->
+                _uiState.update { state ->
+                    state.copy(goals = goals)
                 }
             }
         }
@@ -157,12 +173,40 @@ class WeightTrackerViewModel(
         _uiState.update { it.copy(preferredUnit = unit) }
     }
 
+    fun addGoal(targetWeight: Double, unit: WeightUnit, targetDate: LocalDate) {
+        viewModelScope.launch(repositoryHandler) {
+            val targetWeightKg = if (unit == WeightUnit.Pounds) {
+                targetWeight / 2.2046226218
+            } else {
+                targetWeight
+            }
+            val goal = WeightGoal(
+                targetWeightKg = targetWeightKg,
+                targetDate = targetDate
+            )
+            goalRepository.addGoal(goal)
+        }
+    }
+
+    fun deleteGoal(id: String) {
+        viewModelScope.launch(repositoryHandler) {
+            goalRepository.deleteGoal(id)
+        }
+    }
+
+    fun updateGoal(goal: WeightGoal) {
+        viewModelScope.launch(repositoryHandler) {
+            goalRepository.updateGoal(goal)
+        }
+    }
+
     fun permissionRequestContract(): ActivityResultContract<Set<String>, Set<String>> =
         permissionManager.permissionRequestContract()
 
     companion object {
         fun factory(
             repository: WeightRepository,
+            goalRepository: GoalRepository,
             trendCalculator: WeightTrendCalculator,
             availabilityChecker: HealthConnectAvailabilityChecker,
             permissionManager: HealthConnectPermissionManager
@@ -171,6 +215,7 @@ class WeightTrackerViewModel(
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 return WeightTrackerViewModel(
                     repository = repository,
+                    goalRepository = goalRepository,
                     trendCalculator = trendCalculator,
                     availabilityChecker = availabilityChecker,
                     permissionManager = permissionManager

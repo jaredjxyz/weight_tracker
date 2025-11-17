@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -33,6 +34,7 @@ import com.example.weighttracker.health.launchHealthConnectInstall
 import com.example.weighttracker.health.launchHealthConnectSettings
 import com.example.weighttracker.ui.dashboard.DashboardScreen
 import com.example.weighttracker.ui.log.LogScreen
+import com.example.weighttracker.ui.goals.GoalsScreen
 import com.example.weighttracker.ui.theme.WeightTrackerTheme
 import com.example.weighttracker.data.healthconnect.HealthConnectStatus
 
@@ -41,7 +43,8 @@ private enum class WeightTrackerDestination(
     val labelRes: Int
 ) {
     Dashboard("dashboard", R.string.dashboard_title),
-    Log("log", R.string.log_title)
+    Log("log", R.string.log_title),
+    Goals("goals", R.string.goals_title)
 }
 
 @Composable
@@ -176,6 +179,14 @@ private fun WeightTrackerNavHost(
                 onFocusConsumed = onFocusConsumed
             )
         }
+        composable(WeightTrackerDestination.Goals.route) {
+            GoalsScreen(
+                goals = uiState.goals,
+                unit = uiState.preferredUnit,
+                onAddGoal = viewModel::addGoal,
+                onDeleteGoal = viewModel::deleteGoal
+            )
+        }
     }
 }
 
@@ -212,6 +223,12 @@ private fun WeightTrackerNavigationBar(
                         WeightTrackerDestination.Log ->
                             Icon(
                                 imageVector = Icons.Outlined.EditNote,
+                                contentDescription = null
+                            )
+
+                        WeightTrackerDestination.Goals ->
+                            Icon(
+                                imageVector = Icons.Outlined.Flag,
                                 contentDescription = null
                             )
                     }

@@ -18,6 +18,7 @@ class MainActivity : ComponentActivity() {
     private val viewModel: WeightTrackerViewModel by viewModels {
         WeightTrackerViewModel.factory(
             repository = container.weightRepository,
+            goalRepository = container.goalRepository,
             trendCalculator = container.trendCalculator,
             availabilityChecker = container.availabilityChecker,
             permissionManager = container.permissionManager
