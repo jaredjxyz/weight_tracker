@@ -44,32 +44,82 @@ class WeightTrendCalculator(
     ): List<TrendPoint> {
         if (sortedDates.isEmpty()) return emptyList()
 
+        // Create continuous date range from first to last entry
+        val firstDate = sortedDates.first()
+        val lastDate = sortedDates.last()
+        val allDates = mutableListOf<LocalDate>()
+        var currentDate = firstDate
+        while (!currentDate.isAfter(lastDate)) {
+            allDates.add(currentDate)
+            currentDate = currentDate.plusDays(1)
+        }
+
+        // Interpolate weight values for all dates
+        val interpolatedValues = interpolateWeights(allDates, sortedDates, dailyValues)
+
+        // Calculate 7-day moving average for each date
         val points = mutableListOf<TrendPoint>()
-        val rollingWindowValues = ArrayDeque<Pair<LocalDate, Double>>()
-        var sum = 0.0
 
-        sortedDates.forEach { date ->
-            val value = dailyValues.getValue(date)
-            rollingWindowValues.addLast(date to value)
-            sum += value
+        allDates.forEach { date ->
+            // Get the date range for this 7-day window (inclusive of current day)
+            val windowStart = date.minusDays((rollingWindow - 1).toLong())
 
-            while (rollingWindowValues.isNotEmpty() &&
-                rollingWindowValues.first().first.isBefore(date.minusDays((rollingWindow - 1).toLong()))
-            ) {
-                val removed = rollingWindowValues.removeFirst()
-                sum -= removed.second
+            // Collect all interpolated values within the window
+            val windowValues = allDates
+                .filter { it >= windowStart && it <= date }
+                .mapNotNull { interpolatedValues[it] }
+
+            if (windowValues.isNotEmpty()) {
+                val average = (windowValues.sum() / windowValues.size).roundToTenths()
+                points.add(TrendPoint(date, average))
             }
-
-            val average = if (rollingWindowValues.isEmpty()) {
-                value
-            } else {
-                (sum / rollingWindowValues.size).roundToTenths()
-            }
-
-            points.add(TrendPoint(date, average))
         }
 
         return points
+    }
+
+    private fun interpolateWeights(
+        allDates: List<LocalDate>,
+        sortedDates: List<LocalDate>,
+        dailyValues: Map<LocalDate, Double>
+    ): Map<LocalDate, Double> {
+        val result = mutableMapOf<LocalDate, Double>()
+
+        // Add all actual data points
+        sortedDates.forEach { date ->
+            result[date] = dailyValues.getValue(date)
+        }
+
+        // Interpolate values for dates without entries
+        allDates.forEach { date ->
+            if (date !in result) {
+                // Find the surrounding dates with actual values
+                val beforeDate = sortedDates.lastOrNull { it.isBefore(date) }
+                val afterDate = sortedDates.firstOrNull { it.isAfter(date) }
+
+                when {
+                    beforeDate != null && afterDate != null -> {
+                        // Interpolate between the two values
+                        val beforeValue = dailyValues.getValue(beforeDate)
+                        val afterValue = dailyValues.getValue(afterDate)
+                        val totalDays = java.time.temporal.ChronoUnit.DAYS.between(beforeDate, afterDate).toDouble()
+                        val daysFromBefore = java.time.temporal.ChronoUnit.DAYS.between(beforeDate, date).toDouble()
+                        val ratio = daysFromBefore / totalDays
+                        result[date] = beforeValue + (afterValue - beforeValue) * ratio
+                    }
+                    beforeDate != null -> {
+                        // Use the last known value
+                        result[date] = dailyValues.getValue(beforeDate)
+                    }
+                    afterDate != null -> {
+                        // Use the next known value
+                        result[date] = dailyValues.getValue(afterDate)
+                    }
+                }
+            }
+        }
+
+        return result
     }
 
     private fun Double.roundToTenths(): Double = (this * 10).roundToInt() / 10.0
