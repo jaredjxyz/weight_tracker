@@ -42,6 +42,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.example.weighttracker.R
 import com.example.weighttracker.domain.model.WeightEntry
+import com.example.weighttracker.domain.model.WeightGoal
 import com.example.weighttracker.domain.model.WeightUnit
 import com.example.weighttracker.ui.WeightTrackerUiState
 import com.example.weighttracker.ui.components.EmptyState
@@ -51,6 +52,7 @@ import com.example.weighttracker.ui.components.PermissionCallout
 import com.example.weighttracker.data.healthconnect.HealthConnectStatus
 import java.time.Instant
 import java.time.Duration
+import java.time.temporal.ChronoUnit
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -133,6 +135,7 @@ private fun LogContent(
 
                 else -> WeightList(
                     entries = uiState.entries,
+                    goals = uiState.goals,
                     unit = uiState.preferredUnit,
                     onAddWeight = onAddWeight,
                     onDeleteWeight = onDeleteWeight,
@@ -148,6 +151,7 @@ private fun LogContent(
 @Composable
 private fun WeightList(
     entries: List<WeightEntry>,
+    goals: List<WeightGoal>,
     unit: WeightUnit,
     onAddWeight: (Double, WeightUnit, Instant) -> Unit,
     onDeleteWeight: (String) -> Unit,
@@ -188,6 +192,7 @@ private fun WeightList(
             WeightRow(
                 entry = entry,
                 allEntries = entries,
+                goals = goals,
                 unit = unit,
                 onDeleteWeight = onDeleteWeight
             )
@@ -199,11 +204,13 @@ private fun WeightList(
 private fun WeightRow(
     entry: WeightEntry,
     allEntries: List<WeightEntry>,
+    goals: List<WeightGoal>,
     unit: WeightUnit,
     onDeleteWeight: (String) -> Unit
 ) {
     val sevenDayAverage = calculate7DayAverage(entry, allEntries, unit)
-    
+    val goalInfo = calculateGoalInfo(entry, allEntries, goals, unit)
+
     androidx.compose.material3.Card(
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -244,7 +251,7 @@ private fun WeightRow(
                     )
                 }
             }
-            
+
             if (sevenDayAverage != null) {
                 Text(
                     text = stringResource(
@@ -256,6 +263,31 @@ private fun WeightRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp)
                 )
+            }
+
+            if (goalInfo != null) {
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = stringResource(
+                            id = R.string.log_goal,
+                            goalInfo.expectedWeight,
+                            unitLabel(unit)
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = stringResource(
+                            id = if (goalInfo.difference > 0) R.string.log_goal_difference_positive else R.string.log_goal_difference_negative,
+                            goalInfo.difference
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
@@ -359,4 +391,64 @@ private fun calculate7DayAverage(
     
     val average = totalWeight / entriesInRange.size
     return (average * 10).roundToInt() / 10.0
+}
+
+/**
+ * Contains the expected goal weight for a date and the difference from the 7-day average.
+ */
+private data class GoalInfo(
+    val expectedWeight: Double,
+    val difference: Double
+)
+
+/**
+ * Picks the next goal whose target date is on or after the entry's date and interpolates
+ * linearly from the earliest recorded weight (the trajectory anchor) to that goal's target.
+ *
+ * Anchoring on the earliest entry — rather than the goal's creation timestamp — keeps the
+ * displayed expected weight stable when goals are deleted and re-added.
+ */
+private fun calculateGoalInfo(
+    entry: WeightEntry,
+    allEntries: List<WeightEntry>,
+    goals: List<WeightGoal>,
+    unit: WeightUnit
+): GoalInfo? {
+    if (goals.isEmpty()) return null
+
+    val sevenDayAverage = calculate7DayAverage(entry, allEntries, unit) ?: return null
+
+    val entryDate = entry.recordedAt.atZone(entry.zoneId).toLocalDate()
+
+    val applicableGoal = goals
+        .filter { !it.targetDate.isBefore(entryDate) }
+        .minByOrNull { it.targetDate }
+        ?: return null
+
+    val anchor = allEntries.minByOrNull { it.recordedAt } ?: return null
+    val anchorDate = anchor.recordedAt.atZone(anchor.zoneId).toLocalDate()
+    val anchorWeight = when (unit) {
+        WeightUnit.Kilograms -> anchor.weightKg
+        WeightUnit.Pounds -> anchor.weightLbs()
+    }
+
+    val targetWeight = when (unit) {
+        WeightUnit.Kilograms -> applicableGoal.targetWeightKg
+        WeightUnit.Pounds -> applicableGoal.targetWeightLbs()
+    }
+
+    val totalDays = ChronoUnit.DAYS.between(anchorDate, applicableGoal.targetDate)
+    val expectedWeight = if (totalDays <= 0) {
+        targetWeight
+    } else {
+        val daysElapsed = ChronoUnit.DAYS.between(anchorDate, entryDate).coerceIn(0, totalDays)
+        val progress = daysElapsed.toDouble() / totalDays.toDouble()
+        anchorWeight + (targetWeight - anchorWeight) * progress
+    }
+
+    val difference = sevenDayAverage - expectedWeight
+    return GoalInfo(
+        expectedWeight = (expectedWeight * 10).roundToInt() / 10.0,
+        difference = (difference * 10).roundToInt() / 10.0
+    )
 }

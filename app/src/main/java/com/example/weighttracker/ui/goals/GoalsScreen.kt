@@ -19,11 +19,14 @@ import com.example.weighttracker.domain.model.WeightUnit
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
+private const val KG_TO_LB = 2.2046226218
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GoalsScreen(
     goals: List<WeightGoal>,
     unit: WeightUnit,
+    currentWeightKg: Double?,
     onAddGoal: (Double, WeightUnit, LocalDate) -> Unit,
     onDeleteGoal: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -81,6 +84,7 @@ fun GoalsScreen(
     if (showAddDialog) {
         AddGoalDialog(
             unit = unit,
+            currentWeightKg = currentWeightKg,
             onDismiss = { showAddDialog = false },
             onConfirm = { weight, targetUnit, date ->
                 onAddGoal(weight, targetUnit, date)
@@ -137,6 +141,7 @@ private fun GoalCard(
 @Composable
 private fun AddGoalDialog(
     unit: WeightUnit,
+    currentWeightKg: Double?,
     onDismiss: () -> Unit,
     onConfirm: (Double, WeightUnit, LocalDate) -> Unit
 ) {
@@ -165,6 +170,26 @@ private fun AddGoalDialog(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Target Date: ${selectedDate.format(dateFormatter)}")
+                }
+
+                if (currentWeightKg != null) {
+                    TextButton(
+                        onClick = {
+                            val currentInUnit = when (unit) {
+                                WeightUnit.Kilograms -> currentWeightKg
+                                WeightUnit.Pounds -> currentWeightKg * KG_TO_LB
+                            }
+                            val totalLossInUnit = when (unit) {
+                                WeightUnit.Kilograms -> 10.0 / KG_TO_LB
+                                WeightUnit.Pounds -> 10.0
+                            }
+                            weightText = "%.1f".format(currentInUnit - totalLossInUnit)
+                            selectedDate = LocalDate.now().plusDays(70)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Lose 1 lb/week for 10 weeks")
+                    }
                 }
             }
         },

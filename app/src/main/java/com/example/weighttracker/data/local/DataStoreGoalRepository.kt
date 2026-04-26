@@ -41,8 +41,7 @@ class DataStoreGoalRepository(
     private data class SerializableGoal(
         val id: String,
         val targetWeightKg: Double,
-        val targetDate: String, // ISO-8601 format
-        val createdAt: String // ISO-8601 format
+        val targetDate: String // ISO-8601 format
     )
 
     override val goalsStream: Flow<List<WeightGoal>> =
@@ -99,16 +98,14 @@ class DataStoreGoalRepository(
         WeightGoal(
             id = id,
             targetWeightKg = targetWeightKg,
-            targetDate = LocalDate.parse(targetDate),
-            createdAt = LocalDate.parse(createdAt)
+            targetDate = LocalDate.parse(targetDate)
         )
 
     private fun WeightGoal.toSerializable(): SerializableGoal =
         SerializableGoal(
             id = id,
             targetWeightKg = targetWeightKg,
-            targetDate = targetDate.toString(),
-            createdAt = createdAt.toString()
+            targetDate = targetDate.toString()
         )
 
     private suspend fun <T> Flow<T>.first(): T {

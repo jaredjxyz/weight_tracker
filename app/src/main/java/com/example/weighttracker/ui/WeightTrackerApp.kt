@@ -183,6 +183,7 @@ private fun WeightTrackerNavHost(
             GoalsScreen(
                 goals = uiState.goals,
                 unit = uiState.preferredUnit,
+                currentWeightKg = uiState.entries.firstOrNull()?.weightKg,
                 onAddGoal = viewModel::addGoal,
                 onDeleteGoal = viewModel::deleteGoal
             )

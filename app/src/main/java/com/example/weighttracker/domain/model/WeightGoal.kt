@@ -11,8 +11,7 @@ import kotlin.math.roundToInt
 data class WeightGoal(
     val id: String = UUID.randomUUID().toString(),
     val targetWeightKg: Double,
-    val targetDate: LocalDate,
-    val createdAt: LocalDate = LocalDate.now()
+    val targetDate: LocalDate
 ) {
     companion object {
         private const val KG_TO_LB = 2.2046226218
