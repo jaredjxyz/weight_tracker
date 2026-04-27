@@ -400,11 +400,15 @@ private data class GoalInfo(
 )
 
 /**
- * Picks the next goal whose target date is on or after the entry's date and interpolates
- * linearly from the earliest recorded weight (the trajectory anchor) to that goal's target.
+ * Builds a piecewise-linear trajectory through the goals (sorted by target date) and reads
+ * the expected weight at the entry's date.
  *
- * Anchoring on the earliest entry — rather than the goal's creation timestamp — keeps the
- * displayed expected weight stable when goals are deleted and re-added.
+ * Segment anchors:
+ *  - First segment: earliest recorded weight → first goal's target.
+ *  - Later segments: previous goal's target weight (on its target date) → next goal's target.
+ *
+ * Anchoring later segments at the previous goal's endpoint — rather than the earliest entry —
+ * keeps the trajectory continuous as goals roll over, instead of snapping to a new line.
  */
 private fun calculateGoalInfo(
     entry: WeightEntry,
@@ -418,16 +422,26 @@ private fun calculateGoalInfo(
 
     val entryDate = entry.recordedAt.atZone(entry.zoneId).toLocalDate()
 
-    val applicableGoal = goals
-        .filter { !it.targetDate.isBefore(entryDate) }
-        .minByOrNull { it.targetDate }
-        ?: return null
+    val sortedGoals = goals.sortedBy { it.targetDate }
+    val applicableIndex = sortedGoals.indexOfFirst { !it.targetDate.isBefore(entryDate) }
+    if (applicableIndex < 0) return null
+    val applicableGoal = sortedGoals[applicableIndex]
 
-    val anchor = allEntries.minByOrNull { it.recordedAt } ?: return null
-    val anchorDate = anchor.recordedAt.atZone(anchor.zoneId).toLocalDate()
-    val anchorWeight = when (unit) {
-        WeightUnit.Kilograms -> anchor.weightKg
-        WeightUnit.Pounds -> anchor.weightLbs()
+    val (anchorDate, anchorWeight) = if (applicableIndex == 0) {
+        val anchor = allEntries.minByOrNull { it.recordedAt } ?: return null
+        val date = anchor.recordedAt.atZone(anchor.zoneId).toLocalDate()
+        val weight = when (unit) {
+            WeightUnit.Kilograms -> anchor.weightKg
+            WeightUnit.Pounds -> anchor.weightLbs()
+        }
+        date to weight
+    } else {
+        val prev = sortedGoals[applicableIndex - 1]
+        val weight = when (unit) {
+            WeightUnit.Kilograms -> prev.targetWeightKg
+            WeightUnit.Pounds -> prev.targetWeightLbs()
+        }
+        prev.targetDate to weight
     }
 
     val targetWeight = when (unit) {

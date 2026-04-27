@@ -82,7 +82,10 @@ fun GoalsScreen(
                 contentPadding = PaddingValues(bottom = 96.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(goals, key = { it.id }) { goal ->
+                items(
+                    goals.sortedByDescending { it.targetDate },
+                    key = { it.id }
+                ) { goal ->
                     GoalCard(
                         goal = goal,
                         unit = unit,
