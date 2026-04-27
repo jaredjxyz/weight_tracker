@@ -47,7 +47,6 @@ import com.example.weighttracker.domain.model.WeightUnit
 import com.example.weighttracker.ui.WeightTrackerUiState
 import com.example.weighttracker.ui.components.EmptyState
 import com.example.weighttracker.ui.components.InfoCallout
-import com.example.weighttracker.ui.components.LoadingState
 import com.example.weighttracker.ui.components.PermissionCallout
 import com.example.weighttracker.data.healthconnect.HealthConnectStatus
 import java.time.Instant
@@ -119,7 +118,6 @@ private fun LogContent(
 
         else -> {
             when {
-                uiState.isLoading && uiState.entries.isEmpty() -> LoadingState(modifier = modifier)
                 uiState.permissionsGranted.not() -> PermissionCallout(
                     title = stringResource(R.string.health_connect_permission_title),
                     message = stringResource(R.string.health_connect_permission_message),
